@@ -1,5 +1,5 @@
 /*
- * SmartServoWebsocket.h
+ * SmartServoBridge.h
  *
  * A library for ESP32 that bridges between smart servos (like Dynamixel) and web clients.
  * Allows control and monitoring of smart servos over a network connection.
@@ -12,41 +12,49 @@
  * version 2.1 of the License, or (at your option) any later version.
  */
 
-#ifndef SmartServoWebsocket_h
-#define SmartServoWebsocket_h
+#ifndef SmartServoBridge_h
+#define SmartServoBridge_h
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebSocketsServer.h>
 
 /**
- * @brief SmartServoWebsocket bridges smart servos and web clients over WiFi using WebSockets.
+ * @brief SmartServoBridge bridges smart servos and web clients over WiFi using WebSockets or Serial.
  */
-class SmartServoWebsocket
+class SmartServoBridge
 {
 public:
     /**
-     * @brief Construct a new SmartServoWebsocket object
-     * @param websocketPort The port to use for the WebSocket server (default: 80)
-     */
-    SmartServoWebsocket(uint16_t websocketPort = 80);
-
-    /**
-     * @brief Initialize the library and connect to WiFi and the servo bus.
-     * @param ssid WiFi SSID
-     * @param password WiFi password
+     * @brief Construct a new SmartServoBridge object
      * @param servoBaudRate Baud rate for the servo bus (default: 1000000)
+     * @param txEnablePin Pin to enable TX for half-duplex (default: D3)
      * @param rxPin RX pin for the servo bus (default: -1, use default)
      * @param txPin TX pin for the servo bus (default: -1, use default)
-     * @param txEnablePin Pin to enable TX for half-duplex (default: D3)
      */
-    void begin(const char *ssid, const char *password, uint32_t servoBaudRate = 1000000, int8_t rxPin = -1, int8_t txPin = -1, uint8_t txEnablePin = D3);
+    SmartServoBridge(uint32_t servoBaudRate = 1000000,
+                     uint8_t txEnablePin = D3,
+                     int8_t rxPin = -1,
+                     int8_t txPin = -1);
 
     /**
-     * @brief Set the debug output stream (e.g., Serial).
-     * @param stream Reference to a Stream object for debug output
+     * @brief Set the serial port for debug output and/or serial relay mode
+     * @param port Pointer to a Stream object (e.g., &Serial)
      */
-    void setDebugStream(Stream &stream);
+    void setSerialPort(Stream *port);
+
+    /**
+     * @brief Initialize the library in WebSocket mode
+     * @param ssid WiFi SSID
+     * @param password WiFi password
+     */
+    void begin(const char *ssid, const char *password);
+
+    /**
+     * @brief Initialize the library in Serial mode
+     * @param bridgePort Stream for bridge communication
+     */
+    void begin(Stream *bridgePort);
 
     /**
      * @brief Main loop function. Call this frequently in your main loop.
@@ -72,22 +80,40 @@ public:
     void setTextMessageHandler(void (*handler)(const char *));
 
     /**
-     * @brief Check if WiFi is connected.
+     * @brief Check if WiFi is connected (WebSocket mode only).
      * @return true if connected, false otherwise
      */
     bool isConnected();
 
     /**
-     * @brief Get the local IP address.
+     * @brief Get the local IP address (WebSocket mode only).
      * @return IPAddress object
      */
     IPAddress getLocalIP();
 
     /**
-     * @brief Get the current WiFi RSSI (signal strength).
+     * @brief Get the current WiFi RSSI (signal strength) (WebSocket mode only).
      * @return RSSI in dBm
      */
     int getRSSI();
+
+    /**
+     * @brief Enable debug output on the specified port
+     * @param debugPort Stream for debug output
+     * @param enable true to enable, false to disable (default: true)
+     */
+    void enableDebug(Stream *debugPort, bool enable = true);
+
+    /**
+     * @brief Disable debug output
+     */
+    void disableDebug();
+
+    /**
+     * @brief Check if debug output is currently available
+     * @return true if debug output is safe to use
+     */
+    bool isDebugAvailable();
 
 private:
     /**
@@ -98,7 +124,17 @@ private:
     /**
      * @brief Baud rate for the servo bus.
      */
-    uint32_t _servoBaudRate = 1000000;
+    uint32_t _servoBaudRate;
+
+    /**
+     * @brief RX pin for the servo bus.
+     */
+    int8_t _rxPin;
+
+    /**
+     * @brief TX pin for the servo bus.
+     */
+    int8_t _txPin;
 
     /**
      * @brief Wait time (in microseconds) after flushing the servo bus.
@@ -131,9 +167,29 @@ private:
     bool _wifiConnected = false;
 
     /**
-     * @brief Debug output stream.
+     * @brief Serial port for debug output and/or serial relay.
      */
-    Stream *_debugStream = nullptr;
+    Stream *_serialPort = nullptr;
+
+    /**
+     * @brief Flag to indicate if using serial instead of websocket.
+     */
+    bool _useSerial = false;
+
+    /**
+     * @brief Track TX_EN state.
+     */
+    bool _txEnabled = false;
+
+    /**
+     * @brief Track if begin() has been called.
+     */
+    bool _isInitialized = false;
+
+    /**
+     * @brief Debug output enabled flag.
+     */
+    bool _debugEnabled = false;
 
     /**
      * @brief Callback for servo commands.
@@ -153,7 +209,7 @@ private:
     /**
      * @brief Static instance for WiFi event handling.
      */
-    static SmartServoWebsocket *_instance;
+    static SmartServoBridge *_instance;
 
     /**
      * @brief Setup WiFi and WebSocket networking.
@@ -161,14 +217,14 @@ private:
     void _setupNetworking();
 
     /**
-     * @brief Relay data from WebSocket to the servo bus.
+     * @brief Relay data to the servo bus.
      * @param mem Pointer to data
      * @param len Length of data
      */
     void _relayToServo(const void *mem, uint32_t len);
 
     /**
-     * @brief Relay data from the servo bus to WebSocket clients.
+     * @brief Relay data from the servo bus.
      */
     void _relayFromServo();
 
@@ -186,6 +242,33 @@ private:
      * @param event WiFi event ID
      */
     static void _wifiEvent(arduino_event_id_t event);
+
+    /**
+     * @brief Handle serial data in serial mode.
+     */
+    void _handleSerialData();
+
+    /**
+     * @brief Print debug message if debug is available.
+     * @param message Message to print
+     */
+    void _debugPrint(const char *message);
+
+    /**
+     * @brief Print debug message with newline if debug is available.
+     * @param message Message to print
+     */
+    void _debugPrintln(const char *message);
+
+    /**
+     * @brief Stream for bridge communication (in Serial mode)
+     */
+    Stream *_bridgePort = nullptr;
+
+    /**
+     * @brief Stream for debug output
+     */
+    Stream *_debugPort = nullptr;
 };
 
 #endif
