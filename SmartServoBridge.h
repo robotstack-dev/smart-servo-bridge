@@ -115,6 +115,13 @@ public:
      */
     bool isDebugAvailable();
 
+    /**
+     * @brief Relay data to the servo bus.
+     * @param mem Pointer to data
+     * @param len Length of data
+     */
+    void relayToServo(const void *mem, uint32_t len);
+
 private:
     /**
      * @brief Pin used to enable TX for half-duplex communication.

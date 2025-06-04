@@ -222,20 +222,51 @@ void SmartServoBridge::_handleSerialData()
     size_t available = _bridgePort->available();
     if (available > 0)
     {
+        // Check if the data looks like text (all printable ASCII)
+        bool isText = true;
         uint8_t buffer[available];
         size_t bytesRead = _bridgePort->readBytes(buffer, available);
 
         if (bytesRead > 0)
         {
-            if (_debugPort)
+            // Check if all bytes are printable ASCII
+            for (size_t i = 0; i < bytesRead; i++)
             {
-                _debugPort->print("Received ");
-                _debugPort->print(bytesRead);
-                _debugPort->println(" bytes from bridge port");
+                if (buffer[i] < 32 || buffer[i] > 126)
+                {
+                    isText = false;
+                    break;
+                }
             }
 
-            // Relay the entire buffer to the servo
-            _relayToServo(buffer, bytesRead);
+            if (isText && _textMessageHandler)
+            {
+                // Null terminate the text for string handling
+                char *text = new char[bytesRead + 1];
+                memcpy(text, buffer, bytesRead);
+                text[bytesRead] = '\0';
+
+                if (_debugPort)
+                {
+                    _debugPort->print("Received text command: ");
+                    _debugPort->println(text);
+                }
+
+                _textMessageHandler(text);
+                delete[] text;
+            }
+            else
+            {
+                if (_debugPort)
+                {
+                    _debugPort->print("Received binary data (");
+                    _debugPort->print(bytesRead);
+                    _debugPort->println(" bytes)");
+                }
+
+                // Relay the binary data to the servo
+                _relayToServo(buffer, bytesRead);
+            }
         }
     }
 }
@@ -555,4 +586,14 @@ void SmartServoBridge::_wifiEvent(arduino_event_id_t event)
         _instance->_wifiConnected = true;
         break;
     }
+}
+
+/**
+ * @brief Relay data to the servo bus.
+ * @param mem Pointer to data
+ * @param len Length of data
+ */
+void SmartServoBridge::relayToServo(const void *mem, uint32_t len)
+{
+    _relayToServo(mem, len);
 }
