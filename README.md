@@ -31,12 +31,13 @@ The ESP32 needs to be connected to the smart servo using a half-duplex UART conf
 ## Installation
 
 1. Clone this repository
-2. Open the project in Arduino IDE
+2. Place into Arduino > Libraries folder
 3. Install required libraries:
    - WebSocketsServer (external)
    - WiFi (included with ESP32 core)
-4. Configure your WiFi credentials in the code (for WebSocket mode)
-5. Upload to your ESP32
+4. Open Example
+5. Configure your WiFi credentials in the code (for WebSocket mode)
+6. Upload to your ESP32
 
 ## Configuration
 
