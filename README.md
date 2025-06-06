@@ -1,6 +1,6 @@
 # Smart Servo Bridge
 
-A WebSocket and Serial bridge for ESP32 that connects smart servos (like Dynamixel) to web or serial clients. Control and monitor smart servos over a network connection or directly via USB/serial. It's intended to allow you
+A WebSocket and Serial bridge for ESP32 that connects smart servos (like Dynamixel) to web or serial clients. Control and monitor smart servos over a network connection or directly via USB/serial.
 
 > **Note:** This is an early version of the library. While it has been tested with several servo models, bugs may exist. Please report any issues you encounter.
 
@@ -25,7 +25,7 @@ A WebSocket and Serial bridge for ESP32 that connects smart servos (like Dynamix
 
 The ESP32 needs to be connected to the smart servo using a half-duplex UART configuration. You can either:
 
-1. Purachase a **[RobotStack Smart Servo Add-On Board](https://www.tindie.com/products/robotstack/smart-servo-addon-board/)** (recommended for reliable operation)
+1. Purchase a **[RobotStack Smart Servo Add-On Board](https://www.tindie.com/products/robotstack/smart-servo-addon-board/)** (recommended for reliable operation)
 2. Build the Smart Servo Add-On Board, or similar according to the **[documentation](https://github.com/robotstack-dev/smart-servo-add-on)**
 
 ## Installation
@@ -73,13 +73,11 @@ const char* password = "yourPassword";
 
 ## Debugging
 
-Enable debug output by uncommenting:
+Enable debug logging output over Serial by uncommenting:
 
 ```cpp
 // bridge.enableDebug(&IO); // Enable debug output
 ```
-
-Debug information will be sent over Serial
 
 ## Contributing
 
