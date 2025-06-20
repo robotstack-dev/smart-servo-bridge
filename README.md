@@ -66,6 +66,7 @@ const char* password = "yourPassword";
 - `examples/WebSocketBridge/WebSocketBridge.ino` – WebSocket mode
 - `examples/SerialBridge/SerialBridge.ino` – Serial mode (raw relay)
 - `examples/SerialTextCommands/SerialTextCommands.ino` – Serial mode (relay + text commands)
+- `websocket_test.html` – WebSocket test client for debugging and testing connections
 
 ### Example Python Clients
 
