@@ -4,9 +4,8 @@
 SmartServoBridge *SmartServoBridge::_instance = nullptr;
 
 // Constants
-#define WIFI_CONNECT_TIMEOUT 20000 // 20 seconds timeout
-#define WIFI_RECONNECT_DELAY 5000  // 5 seconds between reconnect attempts
-#define MIN_WIFI_RSSI -80          // More lenient signal strength threshold
+#define WIFI_RECONNECT_DELAY 5000 // 5 seconds between reconnect attempts
+#define MIN_WIFI_RSSI -80         // More lenient signal strength threshold
 
 /**
  * @brief Construct a new SmartServoBridge object.
@@ -57,13 +56,13 @@ void SmartServoBridge::begin(const char *ssid, const char *password)
     // Initialize serial communication
     if (isDebugAvailable())
     {
-        _debugPort->print("[log] Initializing serial port at ");
-        _debugPort->println(_servoBaudRate);
-        _debugPort->print("[log] RX: ");
-        _debugPort->println(_rxPin);
-        _debugPort->print("[log] TX: ");
-        _debugPort->println(_txPin);
-        _debugPort->print("[log] TX_EN: ");
+        _debugPort->print("[log] Initializing servo serial port at ");
+        _debugPort->print(_servoBaudRate);
+        _debugPort->print(" baud | RX: ");
+        _debugPort->print(_rxPin);
+        _debugPort->print(" | TX: ");
+        _debugPort->print(_txPin);
+        _debugPort->print(" | TX_EN: ");
         _debugPort->println(_txEnablePin);
     }
 
@@ -108,13 +107,13 @@ void SmartServoBridge::begin(Stream *bridgePort)
     // Initialize serial communication
     if (isDebugAvailable())
     {
-        _debugPort->print("[log] Initializing serial port at ");
-        _debugPort->println(_servoBaudRate);
-        _debugPort->print("[log] RX: ");
-        _debugPort->println(_rxPin);
-        _debugPort->print("[log] TX: ");
-        _debugPort->println(_txPin);
-        _debugPort->print("[log] TX_EN: ");
+        _debugPort->print("[log] Initializing servo serial port at ");
+        _debugPort->print(_servoBaudRate);
+        _debugPort->print(" baud | RX: ");
+        _debugPort->print(_rxPin);
+        _debugPort->print(" | TX: ");
+        _debugPort->print(_txPin);
+        _debugPort->print(" | TX_EN: ");
         _debugPort->println(_txEnablePin);
     }
 
@@ -218,28 +217,128 @@ void SmartServoBridge::update()
             {
                 _relayFromServo();
             }
+
+            // Print periodic status every 5 seconds
+            static unsigned long lastStatusPrint = 0;
+            static unsigned long connectionStartTime = 0;
+            if (lastStatusPrint == 0)
+            {
+                connectionStartTime = millis();
+            }
+
+            if (millis() - lastStatusPrint >= 5000)
+            {
+                lastStatusPrint = millis();
+                if (isDebugAvailable())
+                {
+                    _debugPort->print("[log] Status: Connected | IP: ");
+                    _debugPort->print(WiFi.localIP());
+                    _debugPort->print(" | RSSI: ");
+                    _debugPort->print(WiFi.RSSI());
+                    _debugPort->print(" dBm | Uptime: ");
+                    _debugPort->print((millis() - connectionStartTime) / 1000);
+                    _debugPort->println("s");
+                }
+            }
         }
         else
         {
-            // Try to reconnect if enough time has passed and not already attempting
+            // Try to reconnect if enough time has passed
             static unsigned long lastReconnectAttempt = 0;
-            static bool reconnectAttempted = false;
+            static int reconnectCount = 0;
+            static bool reconnectInProgress = false;
+            static unsigned long lastStatusCheck = 0;
+            static unsigned long stuckStartTime = 0;
+            static bool stuckDetected = false;
 
-            if (millis() - lastReconnectAttempt > WIFI_RECONNECT_DELAY && !reconnectAttempted)
+            if (millis() - lastReconnectAttempt > WIFI_RECONNECT_DELAY)
             {
-                lastReconnectAttempt = millis();
-                reconnectAttempted = true;
-                if (isDebugAvailable())
+                int wifiStatus = WiFi.status();
+                int rssi = WiFi.RSSI();
+
+                // Detect stuck state (RSSI 0 dBm for more than 30 seconds)
+                if (rssi == 0 && !stuckDetected)
                 {
-                    _debugPort->println("[log] Attempting WiFi reconnection...");
+                    if (stuckStartTime == 0)
+                    {
+                        stuckStartTime = millis();
+                    }
+                    else if (millis() - stuckStartTime > 30000) // 30 seconds
+                    {
+                        stuckDetected = true;
+                        if (isDebugAvailable())
+                        {
+                            _debugPort->println("[log] WiFi appears stuck (RSSI 0 dBm), resetting WiFi...");
+                        }
+                        // Force WiFi reset
+                        WiFi.disconnect(true);
+                        WiFi.mode(WIFI_OFF);
+                        delay(1000);
+                        WiFi.mode(WIFI_STA);
+                        reconnectCount = 0;
+                        reconnectInProgress = false;
+                        stuckStartTime = 0;
+                        stuckDetected = false;
+                    }
                 }
-                _setupNetworking();
-            }
+                else if (rssi != 0)
+                {
+                    // Reset stuck detection if we get signal back
+                    stuckStartTime = 0;
+                    stuckDetected = false;
+                }
 
-            // Reset reconnect flag if we get connected
-            if (WiFi.status() == WL_CONNECTED)
-            {
-                reconnectAttempted = false;
+                // Only attempt reconnection if WiFi is in a disconnected state and not already trying to connect
+                if ((wifiStatus == WL_DISCONNECTED || wifiStatus == WL_CONNECT_FAILED || wifiStatus == WL_NO_SSID_AVAIL) && !reconnectInProgress && !stuckDetected)
+                {
+                    lastReconnectAttempt = millis();
+                    reconnectCount++;
+                    reconnectInProgress = true;
+
+                    if (isDebugAvailable())
+                    {
+                        if (reconnectCount <= 4)
+                        {
+                            _debugPort->print("[log] WiFi reconnection attempt ");
+                            _debugPort->print(reconnectCount);
+                            _debugPort->println("...");
+                        }
+                        else if (reconnectCount % 5 == 0) // Only show every 5th attempt after the first 4
+                        {
+                            _debugPort->print("[log] WiFi reconnection attempt ");
+                            _debugPort->print(reconnectCount);
+                            _debugPort->println(" (continuing...)");
+                        }
+                    }
+                    _setupNetworking();
+                }
+                else if (wifiStatus == WL_IDLE_STATUS)
+                {
+                    // WiFi is connecting, reset the reconnect flag when it starts
+                    reconnectInProgress = false;
+                }
+                else if (wifiStatus == WL_CONNECTED)
+                {
+                    // WiFi connected, reset the reconnect flag
+                    reconnectInProgress = false;
+                    stuckStartTime = 0;
+                    stuckDetected = false;
+                }
+                else if (reconnectInProgress && millis() - lastStatusCheck > 5000) // Show status every 5 seconds
+                {
+                    // Show intermediate status during long reconnection attempts
+                    lastStatusCheck = millis();
+                    if (isDebugAvailable())
+                    {
+                        _debugPort->print("[log] Still reconnecting: ");
+                        _debugPort->print("WiFi Status: ");
+                        _debugPort->print(WiFi.status());
+                        _debugPort->print(" | RSSI: ");
+                        _debugPort->print(WiFi.RSSI());
+                        _debugPort->print(" dBm | Connected: ");
+                        _debugPort->println(_wifiConnected ? "YES" : "NO");
+                    }
+                }
             }
         }
     }
@@ -346,56 +445,31 @@ bool SmartServoBridge::isConnected()
         return true;
     }
 
-    // If not connected, provide detailed status information only when status changes
+    // If not connected, provide status information only when status changes
     int wifiStatus = WiFi.status();
     static int lastWifiStatus = -1;
 
     if (wifiStatus != lastWifiStatus && isDebugAvailable())
     {
         lastWifiStatus = wifiStatus;
-        _debugPort->print("[log] WiFi status: ");
-        _debugPort->print(wifiStatus);
-        _debugPort->print(" (");
+
+        // Only show meaningful status changes, not intermediate states
         switch (wifiStatus)
         {
-        case WL_IDLE_STATUS:
-            _debugPort->print("WL_IDLE_STATUS");
-            break;
         case WL_NO_SSID_AVAIL:
-            _debugPort->print("WL_NO_SSID_AVAIL");
-            break;
-        case WL_SCAN_COMPLETED:
-            _debugPort->print("WL_SCAN_COMPLETED");
-            break;
-        case WL_CONNECTED:
-            _debugPort->print("WL_CONNECTED");
+            _debugPort->println("[log] WiFi status: Network not found");
             break;
         case WL_CONNECT_FAILED:
-            _debugPort->print("WL_CONNECT_FAILED");
+            _debugPort->println("[log] WiFi status: Connection failed");
             break;
         case WL_CONNECTION_LOST:
-            _debugPort->print("WL_CONNECTION_LOST");
+            _debugPort->println("[log] WiFi status: Connection lost");
             break;
         case WL_DISCONNECTED:
-            _debugPort->print("WL_DISCONNECTED");
+            _debugPort->println("[log] WiFi status: Disconnected");
             break;
-        default:
-            _debugPort->print("Unknown");
-            break;
-        }
-        _debugPort->println(")");
-
-        // Show error list on first failure detection
-        static bool showedErrorList = false;
-        if (wifiStatus == WL_CONNECT_FAILED && !showedErrorList)
-        {
-            showedErrorList = true;
-            _debugPort->println("[log] Connection failed! Possible issues:");
-            _debugPort->println("[log] 1. Incorrect SSID or password");
-            _debugPort->println("[log] 2. WiFi network not in range");
-            _debugPort->println("[log] 3. Network requires additional authentication");
-            _debugPort->println("[log] 4. Power supply insufficient for WiFi operation");
-            _debugPort->println("[log] 5. Network is 5GHz only (ESP32 supports 2.4GHz)");
+            // Don't show WL_IDLE_STATUS or WL_CONNECTED as they're intermediate states
+            // that are handled by the WiFi event handlers
         }
     }
 
@@ -408,6 +482,10 @@ bool SmartServoBridge::isConnected()
  */
 IPAddress SmartServoBridge::getLocalIP()
 {
+    if (!_wifiConnected || WiFi.status() != WL_CONNECTED)
+    {
+        return IPAddress(0, 0, 0, 0);
+    }
     return WiFi.localIP();
 }
 
@@ -425,25 +503,15 @@ int SmartServoBridge::getRSSI()
  */
 void SmartServoBridge::_setupNetworking()
 {
-    if (isDebugAvailable())
-    {
-        _debugPort->println("[log] Setting up networking...");
-    }
-
     // Check current WiFi status
     int currentStatus = WiFi.status();
-    if (isDebugAvailable())
-    {
-        _debugPort->print("[log] Current WiFi status: ");
-        _debugPort->println(currentStatus);
-    }
 
     // Only configure WiFi if not already connected or connecting
     if (currentStatus != WL_CONNECTED && currentStatus != WL_IDLE_STATUS)
     {
         if (isDebugAvailable())
         {
-            _debugPort->println("[log] Configuring WiFi...");
+            _debugPort->println("[log] Starting WiFi connection...");
         }
 
         // Configure WiFi
@@ -466,11 +534,11 @@ void SmartServoBridge::_setupNetworking()
         }
         _wifiConnected = true;
     }
-    else
+    else if (currentStatus == WL_IDLE_STATUS)
     {
         if (isDebugAvailable())
         {
-            _debugPort->println("[log] WiFi is already connecting, waiting...");
+            _debugPort->println("[log] WiFi connection in progress...");
         }
     }
 }
@@ -484,18 +552,12 @@ void SmartServoBridge::_relayToServo(const void *mem, uint32_t len)
 {
     const uint8_t *src = (const uint8_t *)mem;
 
-    if (_debugPort)
-    {
-        _debugPort->print("[log] Relaying ");
-        _debugPort->print(len);
-        _debugPort->println(" bytes to servo");
-    }
-
-    if (_debugPort)
+    if (isDebugAvailable())
     {
         _debugPort->print("[log] Sending to servo (");
         _debugPort->print(len);
         _debugPort->println(" bytes):");
+        _debugPort->print("[log] ");
         for (uint32_t i = 0; i < len; i++)
         {
             _debugPort->printf("%02X ", src[i]);
@@ -526,14 +588,18 @@ void SmartServoBridge::_relayFromServo()
         uint8_t buffer[len];
         _servoBus.readBytes(buffer, len);
 
-        if (_debugPort)
+        if (isDebugAvailable())
         {
             _debugPort->println("\n[log] Reply from servo:");
+            _debugPort->print("[log] ");
             for (int i = 0; i < len; i++)
             {
                 _debugPort->printf("%02X ", buffer[i]);
             }
             _debugPort->println();
+            _debugPort->print("[log] Received ");
+            _debugPort->print(len);
+            _debugPort->println(" bytes from servo");
         }
 
         if (!_useSerial)
@@ -550,13 +616,6 @@ void SmartServoBridge::_relayFromServo()
         if (_servoResponseHandler)
         {
             _servoResponseHandler(buffer, len);
-        }
-
-        if (_debugPort)
-        {
-            _debugPort->print("[log] Received ");
-            _debugPort->print(len);
-            _debugPort->println(" bytes from servo");
         }
     }
 }
@@ -610,19 +669,7 @@ void SmartServoBridge::_webSocketEvent(uint8_t num, WStype_t type, uint8_t *payl
                 _debugPort->printf("[log] [%u] Received text: %s\n", num, text);
             }
 
-            // Handle ping/pong for testing
-            if (strcmp(text, "ping") == 0)
-            {
-                if (isDebugAvailable())
-                {
-                    _debugPort->printf("[log] [%u] Sending pong response\n", num);
-                }
-                _webSocket.sendTXT(num, "pong");
-            }
-            else
-            {
-                _textMessageHandler(text);
-            }
+            _textMessageHandler(text);
 
             delete[] text;
         }
@@ -647,10 +694,10 @@ void SmartServoBridge::_webSocketEvent(uint8_t num, WStype_t type, uint8_t *payl
  */
 void SmartServoBridge::_wifiEvent(arduino_event_id_t event)
 {
-    if (!_instance || !_instance->isDebugAvailable())
+    if (!_instance)
         return;
 
-    // Only log state changes
+    // Only log state changes if debug is available
     static arduino_event_id_t lastEvent = ARDUINO_EVENT_MAX;
     if (event == lastEvent)
         return;
@@ -659,55 +706,70 @@ void SmartServoBridge::_wifiEvent(arduino_event_id_t event)
     switch (event)
     {
     case ARDUINO_EVENT_WIFI_STA_START:
-        _instance->_debugPort->println("[log] WiFi client started");
+        if (_instance->isDebugAvailable())
+        {
+            _instance->_debugPort->println("[log] WiFi client started");
+        }
         break;
     case ARDUINO_EVENT_WIFI_STA_STOP:
-        _instance->_debugPort->println("[log] WiFi client stopped");
+        if (_instance->isDebugAvailable())
+        {
+            _instance->_debugPort->println("[log] WiFi client stopped");
+        }
         break;
     case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-        _instance->_debugPort->println("[log] Connected to WiFi");
+        if (_instance->isDebugAvailable())
+        {
+            _instance->_debugPort->println("[log] Connected to WiFi");
+        }
         break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-        _instance->_debugPort->println("[log] Disconnected from WiFi");
+        if (_instance->isDebugAvailable())
+        {
+            _instance->_debugPort->println("[log] Disconnected from WiFi");
+        }
         _instance->_wifiConnected = false;
         break;
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-        _instance->_debugPort->print("[log] Got IP: ");
-        _instance->_debugPort->println(WiFi.localIP());
-        _instance->_wifiConnected = true;
+        _instance->_wifiConnected = true; // Only set connected when we have an IP
+
+        if (_instance->isDebugAvailable())
+        {
+            _instance->_debugPort->println("[log] WiFi event: Got IP address");
+        }
 
         // Start WebSocket server now that we have an IP
         if (!_instance->_useSerial)
         {
-            _instance->_debugPort->println("[log] Starting WebSocket server...");
+            if (_instance->isDebugAvailable())
+            {
+                _instance->_debugPort->println("[log] Starting WebSocket server...");
+            }
+
             _instance->_webSocket.begin();
             _instance->_webSocket.onEvent([_instance](uint8_t num, WStype_t type, uint8_t *payload, size_t length)
                                           { _instance->_webSocketEvent(num, type, payload, length); });
-            _instance->_debugPort->println("[log] WebSocket server started on port 8080");
-            _instance->_debugPort->print("[log] Connect to: ws://");
-            _instance->_debugPort->print(WiFi.localIP());
-            _instance->_debugPort->println(":8080");
-            _instance->_debugPort->println("[log] WebSocket server should now be accepting connections");
+
+            if (_instance->isDebugAvailable())
+            {
+                _instance->_debugPort->println("[log] WebSocket server started successfully");
+                // Print connection established message
+                _instance->_debugPort->println("\n[log] === CONNECTION ESTABLISHED ===");
+                _instance->_debugPort->print("[log] IP Address: ");
+                _instance->_debugPort->println(WiFi.localIP());
+                _instance->_debugPort->print("[log] RSSI: ");
+                _instance->_debugPort->print(WiFi.RSSI());
+                _instance->_debugPort->println(" dBm");
+                _instance->_debugPort->println("[log] WebSocket server running on port 8080");
+                _instance->_debugPort->print("[log] Connect to: ws://");
+                _instance->_debugPort->print(WiFi.localIP());
+                _instance->_debugPort->println(":8080");
+                _instance->_debugPort->println("[log] ==============================\n");
+            }
         }
         break;
     case ARDUINO_EVENT_WIFI_STA_LOST_IP:
-        _instance->_debugPort->println("[log] Lost IP address");
         _instance->_wifiConnected = false;
-        break;
-    case ARDUINO_EVENT_WIFI_STA_AUTHMODE_CHANGE:
-        _instance->_debugPort->println("[log] WiFi authentication mode changed");
-        break;
-    case ARDUINO_EVENT_WPS_ER_SUCCESS:
-        _instance->_debugPort->println("[log] WiFi WPS succeeded");
-        break;
-    case ARDUINO_EVENT_WPS_ER_FAILED:
-        _instance->_debugPort->println("[log] WiFi WPS failed");
-        break;
-    case ARDUINO_EVENT_WPS_ER_TIMEOUT:
-        _instance->_debugPort->println("[log] WiFi WPS timeout");
-        break;
-    case ARDUINO_EVENT_WPS_ER_PIN:
-        _instance->_debugPort->println("[log] WiFi WPS PIN");
         break;
     }
 }
@@ -720,4 +782,23 @@ void SmartServoBridge::_wifiEvent(arduino_event_id_t event)
 void SmartServoBridge::relayToServo(const void *mem, uint32_t len)
 {
     _relayToServo(mem, len);
+}
+
+/**
+ * @brief Send a text message over WebSocket to connected clients.
+ * @param message Text message to send
+ */
+void SmartServoBridge::sendTextMessage(const String &message)
+{
+    if (!_useSerial && _wifiConnected)
+    {
+        // Send to first connected client (client 0)
+        _webSocket.sendTXT(0, message.c_str());
+
+        if (isDebugAvailable())
+        {
+            _debugPort->print("[log] Sent text message: ");
+            _debugPort->println(message);
+        }
+    }
 }

@@ -29,7 +29,7 @@ void setup()
 
     // Use Serial for bridge communication
     bridge.begin(&IO);
-    // bridge.enableDebug(&IO); // Enable debug output
+    bridge.enableDebug(&IO); // Enable debug output
 }
 
 void loop()

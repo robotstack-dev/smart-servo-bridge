@@ -97,7 +97,7 @@
         <input
           type="text"
           id="ipAddress"
-          value="192.168.1.100"
+          value="192.168.2.61"
           placeholder="Enter ESP32 IP address"
         />
         <button onclick="connect()" id="connectBtn">Connect</button>
@@ -118,7 +118,7 @@
           Send Text
         </button>
         <button onclick="sendBinary()" id="sendBinaryBtn" disabled>
-          Send Binary
+          Ping Servo 1
         </button>
       </div>
 
@@ -250,9 +250,7 @@
       function sendBinary() {
         if (ws && ws.readyState === WebSocket.OPEN) {
           // Send a simple test binary message
-          const testData = new Uint8Array([
-            0xff, 0xff, 0x01, 0x02, 0x00, 0x01, 0x00, 0x00,
-          ]);
+          const testData = new Uint8Array([0xff, 0xff, 0x01, 0x02, 0x01, 0xfb]);
           ws.send(testData);
           log(
             `Sent binary data: ${Array.from(testData)

@@ -122,6 +122,12 @@ public:
      */
     void relayToServo(const void *mem, uint32_t len);
 
+    /**
+     * @brief Send a text message over WebSocket to connected clients.
+     * @param message Text message to send
+     */
+    void sendTextMessage(const String &message);
+
 private:
     /**
      * @brief Pin used to enable TX for half-duplex communication.
