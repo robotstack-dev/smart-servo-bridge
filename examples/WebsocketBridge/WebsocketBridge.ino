@@ -18,8 +18,8 @@
 #include <SmartServoWebsocket.h>
 
 // WiFi credentials
-const char *ssid = "yourSSID";
-const char *password = "yourPassword";
+const char *ssid = "YOUR_WIFI_SSID";
+const char *password = "YOUR_WIFI_PASSWORD";
 
 // Create SmartServoWebsocket instance
 SmartServoWebsocket servoWebsocket;
