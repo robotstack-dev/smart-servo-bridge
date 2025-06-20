@@ -166,7 +166,7 @@ private:
     /**
      * @brief WebSocketsServer object for WebSocket communication.
      */
-    WebSocketsServer _webSocket{80};
+    WebSocketsServer _webSocket{8080};
 
     /**
      * @brief WiFi connection state.
@@ -254,18 +254,6 @@ private:
      * @brief Handle serial data in serial mode.
      */
     void _handleSerialData();
-
-    /**
-     * @brief Print debug message if debug is available.
-     * @param message Message to print
-     */
-    void _debugPrint(const char *message);
-
-    /**
-     * @brief Print debug message with newline if debug is available.
-     * @param message Message to print
-     */
-    void _debugPrintln(const char *message);
 
     /**
      * @brief Stream for bridge communication (in Serial mode)
