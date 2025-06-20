@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SmartServo WebSocket Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .status {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+      .connected {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .connecting {
+        background-color: #fff3cd;
+        color: #856404;
+      }
+
+      input,
+      button {
+        padding: 8px 12px;
+        margin: 5px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      button {
+        background-color: #007bff;
+        color: white;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      button:disabled {
+        background-color: #6c757d;
+        cursor: not-allowed;
+      }
+
+      #log {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 10px;
+        height: 300px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+
+      .log-entry {
+        margin: 2px 0;
+      }
+      .log-info {
+        color: #0066cc;
+      }
+      .log-success {
+        color: #28a745;
+      }
+      .log-error {
+        color: #dc3545;
+      }
+      .log-warning {
+        color: #ffc107;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>SmartServo WebSocket Test Client</h1>
+
+      <div id="status" class="status disconnected">Disconnected</div>
+
+      <div>
+        <label for="ipAddress">ESP32 IP Address:</label>
+        <input
+          type="text"
+          id="ipAddress"
+          value="192.168.2.61"
+          placeholder="Enter ESP32 IP address"
+        />
+        <button onclick="connect()" id="connectBtn">Connect</button>
+        <button onclick="disconnect()" id="disconnectBtn" disabled>
+          Disconnect
+        </button>
+      </div>
+
+      <div>
+        <label for="message">Test Message:</label>
+        <input
+          type="text"
+          id="message"
+          value="Hello ESP32!"
+          placeholder="Enter test message"
+        />
+        <button onclick="sendText()" id="sendTextBtn" disabled>
+          Send Text
+        </button>
+        <button onclick="sendBinary()" id="sendBinaryBtn" disabled>
+          Ping Servo 1
+        </button>
+      </div>
+
+      <div>
+        <button onclick="clearLog()">Clear Log</button>
+        <button onclick="ping()" id="pingBtn" disabled>Ping</button>
+      </div>
+
+      <h3>Connection Log:</h3>
+      <div id="log"></div>
+    </div>
+
+    <script>
+      let ws = null;
+      let pingInterval = null;
+
+      function log(message, type = "info") {
+        const logDiv = document.getElementById("log");
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = document.createElement("div");
+        entry.className = `log-entry log-${type}`;
+        entry.textContent = `[${timestamp}] ${message}`;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+      }
+
+      function updateStatus(status, className) {
+        const statusDiv = document.getElementById("status");
+        statusDiv.textContent = status;
+        statusDiv.className = `status ${className}`;
+      }
+
+      function updateButtons(connected) {
+        document.getElementById("connectBtn").disabled = connected;
+        document.getElementById("disconnectBtn").disabled = !connected;
+        document.getElementById("sendTextBtn").disabled = !connected;
+        document.getElementById("sendBinaryBtn").disabled = !connected;
+        document.getElementById("pingBtn").disabled = !connected;
+      }
+
+      function connect() {
+        const ipAddress = document.getElementById("ipAddress").value.trim();
+        if (!ipAddress) {
+          log("Please enter an IP address", "error");
+          return;
+        }
+
+        const url = `ws://${ipAddress}:8080`;
+        log(`Attempting to connect to ${url}`, "info");
+        updateStatus("Connecting...", "connecting");
+
+        try {
+          ws = new WebSocket(url);
+
+          ws.onopen = function (event) {
+            log("WebSocket connection established!", "success");
+            updateStatus("Connected", "connected");
+            updateButtons(true);
+
+            // Start ping interval
+            pingInterval = setInterval(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send("ping");
+              }
+            }, 30000); // Ping every 30 seconds
+          };
+
+          ws.onmessage = function (event) {
+            if (event.data instanceof Blob) {
+              // Binary data
+              const reader = new FileReader();
+              reader.onload = function () {
+                const bytes = new Uint8Array(reader.result);
+                const hexString = Array.from(bytes)
+                  .map((b) => b.toString(16).padStart(2, "0"))
+                  .join(" ");
+                log(`Received binary data: ${hexString}`, "info");
+              };
+              reader.readAsArrayBuffer(event.data);
+            } else {
+              // Text data
+              log(`Received text: ${event.data}`, "info");
+            }
+          };
+
+          ws.onclose = function (event) {
+            log(
+              `WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`,
+              "warning"
+            );
+            updateStatus("Disconnected", "disconnected");
+            updateButtons(false);
+
+            if (pingInterval) {
+              clearInterval(pingInterval);
+              pingInterval = null;
+            }
+          };
+
+          ws.onerror = function (error) {
+            log(`WebSocket error: ${error}`, "error");
+            updateStatus("Connection Error", "disconnected");
+            updateButtons(false);
+          };
+        } catch (error) {
+          log(`Failed to create WebSocket: ${error.message}`, "error");
+          updateStatus("Connection Failed", "disconnected");
+        }
+      }
+
+      function disconnect() {
+        if (ws) {
+          log("Disconnecting...", "info");
+          ws.close();
+          ws = null;
+        }
+      }
+
+      function sendText() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const message = document.getElementById("message").value;
+          ws.send(message);
+          log(`Sent text: ${message}`, "success");
+        } else {
+          log("WebSocket not connected", "error");
+        }
+      }
+
+      function sendBinary() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          // Send a simple test binary message
+          const testData = new Uint8Array([0xff, 0xff, 0x01, 0x02, 0x01, 0xfb]);
+          ws.send(testData);
+          log(
+            `Sent binary data: ${Array.from(testData)
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join(" ")}`,
+            "success"
+          );
+        } else {
+          log("WebSocket not connected", "error");
+        }
+      }
+
+      function ping() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send("ping");
+          log("Sent ping", "info");
+        }
+      }
+
+      function clearLog() {
+        document.getElementById("log").innerHTML = "";
+      }
+
+      // Auto-connect on page load (optional)
+      // window.onload = function() {
+      //     setTimeout(connect, 1000);
+      // };
+    </script>
+  </body>
+</html>

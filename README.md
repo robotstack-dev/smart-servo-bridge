@@ -53,7 +53,7 @@ const char* password = "yourPassword";
 
 - **WebSocket Mode:**
   - Call `bridge.begin(ssid, password);` to start in WebSocket mode.
-  - Connect to the ESP32's IP address on port 80 using a WebSocket client.
+  - Connect to the ESP32's IP address on port 8080 using a WebSocket client.
   - Send binary to control the servo or text for custom messages.
   - To identify your IP, run the program with debugging enabled (eg. bridge.enableDebug(&IO);)
 - **Serial Mode:**

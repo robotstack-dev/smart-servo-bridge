@@ -122,6 +122,12 @@ public:
      */
     void relayToServo(const void *mem, uint32_t len);
 
+    /**
+     * @brief Send a text message over WebSocket to connected clients.
+     * @param message Text message to send
+     */
+    void sendTextMessage(const String &message);
+
 private:
     /**
      * @brief Pin used to enable TX for half-duplex communication.
@@ -166,7 +172,7 @@ private:
     /**
      * @brief WebSocketsServer object for WebSocket communication.
      */
-    WebSocketsServer _webSocket{80};
+    WebSocketsServer _webSocket{8080};
 
     /**
      * @brief WiFi connection state.
@@ -254,18 +260,6 @@ private:
      * @brief Handle serial data in serial mode.
      */
     void _handleSerialData();
-
-    /**
-     * @brief Print debug message if debug is available.
-     * @param message Message to print
-     */
-    void _debugPrint(const char *message);
-
-    /**
-     * @brief Print debug message with newline if debug is available.
-     * @param message Message to print
-     */
-    void _debugPrintln(const char *message);
 
     /**
      * @brief Stream for bridge communication (in Serial mode)
